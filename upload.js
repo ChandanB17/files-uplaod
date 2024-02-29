@@ -12,7 +12,6 @@ const upload = multer({ dest: 'uploads/' });
 // MongoDB connection setup
 const uri = 'mongodb://localhost:27017/Files';
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
-let collection;
 
 client.connect(err => {
     if (err) {
@@ -20,13 +19,13 @@ client.connect(err => {
         return;
     }
     console.log('Connected to MongoDB');
-    const db = client.db('your_database');
-    collection = db.collection('your_collection');
+    const db = client.db('Files');
+    collection = db.collection('Upload');
 });
 
 // Route to serve the HTML form
 app.get('/', (req, res) => {
-    fs.readFile('upload_form.html', 'utf8', (err, data) => {
+    fs.readFile('image.html', 'utf8', (err, data) => {
         if (err) {
             console.error('Error reading HTML file:', err);
             res.status(500).send('Internal Server Error');
@@ -37,7 +36,7 @@ app.get('/', (req, res) => {
 });
 
 // Route to handle file uploads
-app.post('/upload', upload.fields([{ name: 'image', maxCount: 1 }, { name: 'text', maxCount: 1 }]), (req, res) => {
+app.post('/upload', upload.fields([{ name: 'image', maxCount: 1 }, { name: 'text', maxCount: 1 }]), async (req, res) => {
     const imageFile = req.files['image'] ? req.files['image'][0] : null;
     const textFile = req.files['text'] ? req.files['text'][0] : null;
 
@@ -46,38 +45,33 @@ app.post('/upload', upload.fields([{ name: 'image', maxCount: 1 }, { name: 'text
         return;
     }
 
-    if (imageFile) {
-        // Example: Saving image file
-        // You might want to perform additional processing here (e.g., resizing, renaming)
-        // fs.renameSync(imageFile.path, 'uploads/' + imageFile.originalname);
-        console.log('Image uploaded successfully.');
-    }
+    try {
+        if (imageFile) {
+            // Handle image upload
+            console.log('Image uploaded successfully.');
+        }
 
-    if (textFile) {
-        // Example: Extracting data from text file and storing in MongoDB
-        fs.readFile(textFile.path, 'utf8', (err, data) => {
-            if (err) {
-                console.error('Error reading text file:', err);
-                res.status(500).send('Internal Server Error');
-                return;
-            }
+        if (textFile) {
+            // Extract data from text file and store in MongoDB
+            const data = fs.readFileSync(textFile.path, 'utf8');
             const lines = data.split('\n');
-            lines.forEach(line => {
-                collection.insertOne({ data: line }, (err, result) => {
-                    if (err) {
-                        console.error('Error inserting document into MongoDB:', err);
-                        res.status(500).send('Internal Server Error');
-                        return;
-                    }
-                });
+            const orders = lines.map(line => {
+                const [customer, product, quantity] = line.split(',');
+                return { customer, product, quantity: parseInt(quantity) };
             });
-        });
-        console.log('Text file uploaded successfully.');
-    }
 
-    res.send('Files uploaded successfully.');
+            // Store orders in MongoDB collection
+            const result = await collection.insertMany(orders);
+            console.log(`${result.insertedCount} orders inserted successfully.`);
+        }
+
+        res.send('Files uploaded successfully.');
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).send('Internal Server Error');
+    }
 });
 
 app.listen(port, () => {
-    console.log(`Server listening at http://localhost:3000`);
+    console.log(`Server listening at http://localhost:${port}`);
 });
